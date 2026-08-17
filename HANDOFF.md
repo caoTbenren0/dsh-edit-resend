@@ -68,7 +68,7 @@ dsh-edit-resend/
 
 **配套**：`C:\Users\Acer\.dsh\profiles\web\package.json` 的 `dsh.profile.bundles` 曾缺 `dsh-edit-resend`（导致插件不在启动 roster 中），已重新加入（备份：`package.json.bak-editresend`）。`dsh --profile web --dump-config` 已确认组合树含 `- id: edit-resend / name: dsh-edit-resend`。
 
-**遗留观察**：`package.json` 声明的 `types` 指向 `lib/types/**/*.d.ts`，但该目录实际不存在（纯运行时加载不受影响，仅影响 TS 消费方，发布前需补齐）。
+**遗留观察**：`package.json` 声明的 `types` 指向 `lib/types/**/*.d.ts`——现已补齐（见 §3.7）。
 
 ### 3.2 渲染与功能修复（2026-08-17，实测通过）
 
@@ -122,7 +122,17 @@ dsh-edit-resend/
 
 **验证**：重启 dsh web 后，长会话（如"查看dsh-edit-resend项目"，turn 4 曾无 user 节点）的回合尾部出现按钮 ✓（2026-08-17 用户实测）
 
-**遗留**：编辑语义仍是"丢弃整个回合（含同轮其他消息）并重发"；图片消息显示占位符问题与 §6 已知取舍不变。`types` 目录仍未补齐（见 §3.1）。
+**遗留**：编辑语义仍是"丢弃整个回合（含同轮其他消息）并重发"；图片消息显示占位符问题与 §6 已知取舍不变。
+
+### 3.7 补齐 types 声明（2026-08-17）
+
+`lib/types/` 四个声明文件与 `package.json` 的 exports 一一对应，均为手写、与 `typert.host.js` 的 model.declaration 保持一致：
+
+- `lib/types/index.d.ts` — 主入口：`EditResendService` 类（extends `TypertRemoteService`）+ 全部请求/结果判别联合类型（`ok: true | false`）
+- `lib/types/client/index.d.ts` — client 是 UMD 副作用 bundle，无导出，声明仅供 TS 解析路径
+- `lib/types/typert.host.d.ts` / `typert.remote.d.ts` — `TYPERT` / `TYPERT_REMOTE` 清单结构
+
+**验证**：临时 TS 项目以消费者视角 `paths` 映射四个入口 + `tsc --strict --noEmit` 通过（TYPECHECK OK）。
 
 ### 3.5 自动归档原会话（2026-08-17，v2 时序修复 2026-08-17）
 
