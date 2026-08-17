@@ -133,6 +133,16 @@ dsh-edit-resend/
 - 位置：`edit` 方法第 9 步，`followup` 成功之后、返回 `{ ok: true }` 之前；失败路径（fork/send 失败）不归档
 - 依赖注入已含 `workspaceRegistry`（第 7 步 attach 子会话到原工作区同源），无新增依赖
 
+### 3.6 恢复被归档的会话（2026-08-17）
+
+**官方现状**：0.1.0-rc.6 **只有 `workspace.archiveSession`，没有 unarchive API，也没有任何恢复 UI**（归档会话从分组视图与搜索结果中全部隐藏）。归档是"单向"的，只能靠未来版本或手动手段。
+
+**插件补齐恢复能力**：
+
+1. **host 新增 `editResend/unarchive` Remote**：`{ sessionId }` → 直接调 `workspaceRegistry.setState({ initialized: true, workspaceIds: registry.list().map(w => w.id), archivedSessionIds: 过滤后 })`（`setState` 是公开方法：`global.set` 写 domain + 更新内存）。**关键**：domain `put` 触发 apiProxy 的 `domain/changed` 监听 → 广播 `host/archived-sessions-changed` → **client UI 自动刷新**，恢复后原会话立即回到侧边栏
+2. **client 恢复入口**：每次成功 edit-resend 在 localStorage 记录 `dsh-edit-resend:fork-map`（`childId → parentId`）；**fork 出的新会话**的每个回合尾部显示 `↩ 恢复原会话` 按钮 → 调 `unarchive(parentId)` → 显示"已恢复原会话"
+3. **手动应急恢复**（历史归档、无 fork 记录）：编辑 `C:\Users\Acer\.dsh\storages\workspace.json`，把 sessionId 从 `archivedSessionIds` 数组移除，重启 dsh web（文件外改不触发广播，必须重启）
+
 ---
 
 ## 4. 如何重启验证
