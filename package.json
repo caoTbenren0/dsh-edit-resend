@@ -1,0 +1,63 @@
+{
+  "name": "dsh-edit-resend",
+  "description": "Edit a sent user message and resend it: fork a new branch from that message's turn and regenerate the reply with the edited text.",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "license": "MIT",
+  "keywords": [
+    "deepseek",
+    "harness",
+    "dsh",
+    "dsh-plugin",
+    "edit",
+    "resend"
+  ],
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./typert": {
+      "types": "./lib/types/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
+    "./typert.remote": {
+      "types": "./lib/types/typert.remote.d.ts",
+      "default": "./lib/typert.remote.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-agent": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.6"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ]
+}

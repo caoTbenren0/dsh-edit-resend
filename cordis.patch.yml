@@ -1,0 +1,6 @@
+# dsh-edit-resend: 编辑已发送的用户消息并重新发送（fork 新分支）。
+# 安装：`dsh plugin --profile web add dsh-edit-resend`（或 `dsh plugin --profile web add <本地包路径>`），
+# 然后把本文件的 insert 行并入 profile 的 cordis.patch.yml，重启 dsh web。
+- insert:
+    - id: edit-resend
+      name: 'dsh-edit-resend'
