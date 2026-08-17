@@ -92,17 +92,37 @@ dsh-edit-resend/
 
 按官方"插件走扩展点"原则重写 `lib/client.js`：**移除** `conversation.chat.node` 的 `user` 键 shadow（不再替换官方用户气泡渲染器），改为在 **`conversation.chat.turnTail` chain 槽**注册加法条目：
 
-- 每个**已完成回合**的尾部出现 `✎ 编辑本轮消息并重发` 按钮（chain 槽全部条目依次渲染，零 shadow、零冲突、不需要 priority 技巧）
-- 组件经标准会话 kit 拿到 `sessionId`/`useSession`，用 `snapshot.chat.locations.getTurn(turn)` 精确定位本回合最后一条 user 节点（节点引用 cache-stable，uSES 安全）
+- 每个**已完成回合**的尾部出现 `✎ 编辑本轮消息并重发` 按钮
 - 保存逻辑复用 §3.2 的动态 `ctx.get("remote.editResend")` + `result.value` 解包
 - 官方用户气泡恢复原样（蓝色气泡由官方渲染），插件只贡献尾部按钮与内联编辑面板的少量 CSS
 
 **关键契约**（查证自 `dsh-client-ui-slots`/`dsh-client-ui-conversation` 源码）：
 - chain 条目 `register` 必须带 `select`（纯函数，返回非 null 即选中，结果注入 `matched` prop）；`select: () => true` 表示恒渲染
-- `conversation.chat.turnTail` owner props：`{ turn: TurnLocation, seq, openFile }`；会话作用域标准 props 含 `sessionId`/`useSession`
+- ⚠️ **chain 槽只渲染第一个 `select` 返回非 null 的条目（`break`），不是"全部条目依次渲染"**（§3.3 旧理解的勘误；web-react `renderOutletContent` chain 分支）。条目按 priority 排序（同 priority 保持注册顺序），所以与本插件的 `select: () => true` 竞争时，**先注册的条目总是赢**——官方 `dsh-client-ui-deliverables`（产物）注册在前，有产物时显示产物、无产物时 `selectProducedFiles` 返回 null 才轮到本插件
+- `conversation.chat.turnTail` owner props：`{ turn: TurnLocation, seq, openFile }`；`TurnLocation.turn` 才是 turn id（`location.turn.turn`）；会话作用域标准 props 含 `sessionId`/`useSession`
 - 官方 `user` 渲染器内部硬编码 `MessageIconActions`，**没有用户消息的加法 action 槽位**——"悬停气泡 ✎"只能 shadow；回合尾部/会话头部才是加法路径
+- ⚠️ **客户端投影有窗口截断**：长会话的早期事件不生成节点（`snapshot.chat.locations.getTurn` 可能查不到 user 节点，详见 §3.4）——**不要用投影定位消息，一律走 host 事件日志**
 
 **注意（服务器 clientPath 缓存）**：服务端进程在**包移动前**启动时，`client-modules` 的 module table 会把 clientPath 解析为旧路径（如 `E:\caoTfile\code\dsh\dsh-edit-resend`），移动包后该路径消失 → `/plugins/dsh-edit-resend/client.js` 404（表现为 "bundle script failed to load"）。**移动包后必须重启 dsh web**，让 table 按新链接目标重建。
+
+### 3.4 修复（2026-08-17）：按钮不渲染——窗口截断 vs 投影查找
+
+**症状**：CSS 注入成功、apply 完整执行、`slots.register` 成功（ledger 两个条目）、chain 选举模拟正常，但真实浏览器里按钮不出现（turnTail 槽空）。重启无效。
+
+**排查**（CDP 注入 hook 逐层验证 + 用户浏览器诊断日志）：
+1. bundle 加载 ✓ / apply 完成 ✓ / register 持久 ✓ / 选举 ✓ → 问题在组件内部
+2. 组件诊断日志实锤：`getTurn(4)` 返回 11 个节点全是 assistant-step/tool-call/turn-tail，**没有 user 节点**；全节点扫描发现唯一 user 节点 `locTurn: 5`
+3. **根因**：客户端会话投影对长会话**窗口截断历史**——turn 4 的 `user/message` 事件（以及 `turn/start`）在加载窗口外，未生成节点；部分消息还被 inbox 机制归类为 `steering`。组件 `user === null` → 静默返回 null → 按钮不渲染。**"从投影找本回合用户消息"的设计在长会话下必然失效**
+
+**修复**：**host 端从完整事件日志定位消息**（host 持有全量事件，不受窗口影响）：
+- `editResend/edit` 参数改为 `{ sessionId, turn, text }`：host 定位 `turn/start` → 找回合内第一条 `src=user` 的 `user/message` → 从 turn/start 切割 seed → fork 子会话 → 重发
+- **新增 `editResend/getText`**：`{ sessionId, turn }` → 返回回合用户消息原文（客户端编辑框预填；投影拿不到原文，必须走 host）
+- client 组件简化：不再用 `useSession` 查节点，`turn.turn` 直接来自官方 owner props；按钮对每个已完成回合恒渲染，点击时才调 `getText`
+- typert schema（host/remote）、client bundle 的 descriptor 同步加了 getText
+
+**验证**：重启 dsh web 后，长会话（如"查看dsh-edit-resend项目"，turn 4 曾无 user 节点）的回合尾部出现按钮 ✓（2026-08-17 用户实测）
+
+**遗留**：编辑语义仍是"丢弃整个回合（含同轮其他消息）并重发"；图片消息显示占位符问题与 §6 已知取舍不变。`types` 目录仍未补齐（见 §3.1）。
 
 ---
 
