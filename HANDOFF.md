@@ -124,14 +124,15 @@ dsh-edit-resend/
 
 **遗留**：编辑语义仍是"丢弃整个回合（含同轮其他消息）并重发"；图片消息显示占位符问题与 §6 已知取舍不变。`types` 目录仍未补齐（见 §3.1）。
 
-### 3.5 自动归档原会话（2026-08-17）
+### 3.5 自动归档原会话（2026-08-17，v2 时序修复 2026-08-17）
 
-编辑重发 fork 成功后，host 端自动把**原会话归档**（`workspaceRegistry.archiveSession(source.id)`，best-effort，失败只记日志不影响重发）：
+编辑重发 fork 成功后，**原会话自动归档**（`workspaceRegistry.archiveSession(source.id)`，best-effort，失败只记日志不影响重发）：
 
 - 归档 = 视图级隐藏：会话日志与工作区 `sessionIds` 席位不动，取消归档即恢复原位置（官方 `dsh-workspace` 语义，归档绝不删数据）
 - 幂等：原会话已归档时 `archiveSession` 直接完成不写入
-- 位置：`edit` 方法第 9 步，`followup` 成功之后、返回 `{ ok: true }` 之前；失败路径（fork/send 失败）不归档
-- 依赖注入已含 `workspaceRegistry`（第 7 步 attach 子会话到原工作区同源），无新增依赖
+- **v1 位置（已废弃）**：`edit` 方法第 9 步、返回前归档 → **竞态 bug**：归档广播 `host/archived-sessions-changed` 先于/同时于 RPC 响应到达 client，client 投影发现**当前会话被归档**就 `sessions.clear()`（dsh-client-runtime `project()`：`archivedSessionIds.includes(sessions.current)` 时清空），用户被甩回新建会话（hero）页而不是 fork
+- **v2 位置（现行）**：`edit` **不再归档**，只 fork + followup + 返回 `{ ok: true, sessionId }`；新增独立 Remote `editResend/archive({ sessionId })`（官方 `archiveSession` 的薄封装）。client `save()` 成功路径**先同步 `sessions.open(forkId)`（`select` 同步置 current）→ 再 `await editResend.archive(sourceId)`**：归档广播到达时 current 已是 fork，清空规则永不触发；`open` 抛 "unknown session"（fork 创建广播偶发晚于 RPC 响应）时 600ms 延迟重试兜底
+- 失败路径（fork/send 失败）不归档
 
 ### 3.6 恢复被归档的会话（2026-08-17，设置页方案）
 
@@ -140,6 +141,7 @@ dsh-edit-resend/
 **插件补齐恢复能力（入口在设置页）**：
 
 1. **host 新增 Remote**：
+   - `editResend/archive`：`{ sessionId }` → `workspaceRegistry.archiveSession` 薄封装（供 client 在打开 fork **之后**归档原会话，见 §3.5 竞态修复）
    - `editResend/unarchive`：`{ sessionId }` → 直接调 `workspaceRegistry.setState({ initialized: true, workspaceIds: registry.list().map(w => w.id), archivedSessionIds: 过滤后 })`（`setState` 是公开方法：`global.set` 写 domain + 更新内存）。**关键**：domain `put` 触发 apiProxy 的 `domain/changed` 监听 → 广播 `host/archived-sessions-changed` → **client UI 自动刷新**，恢复后原会话立即回到侧边栏
    - `editResend/listArchived`：返回 `[{ sessionId, cwd, createdAt }]`（`workspaceRegistry.archivedSessionIds` × `sessionQuery.listSessions()` 的 header 元数据；header 无 title 字段，故显示 cwd/创建时间）
 2. **client 设置页分区**：注册 `settings.section`（`id: "edit-resend", order: 100, label: "编辑重发"`）→ 设置页左侧出现「编辑重发」导航，内容区列出全部归档会话 + 每行「恢复」按钮；`useWorkspaces` 订阅 `archivedSessionIds`，恢复后列表自动刷新
@@ -153,8 +155,9 @@ dsh-edit-resend/
 
 1. 关闭 dsh web（桌面图标 / 进程），重新打开（**包移动后必须重启**，见 §3.3 clientPath 缓存说明）
 2. 打开任意有已完成回合的会话 → 用户气泡恢复官方蓝色样式，每个回合尾部出现 `✎ 编辑本轮消息并重发`
-3. 点 `✎` → 修改文本 → 「保存并重发」→ 自动跳到新分支会话并重新生成
-4. 若报错：把错误信息贴回给 agent，用 `cordis` 插件的诊断修复
+3. 点 `✎` → 修改文本 → 「保存并重发」→ **停在 fork 分支会话**（不再跳新建会话页）且原会话自动归档、侧边栏消失
+4. 设置 → 编辑重发 → 归档列表含原会话 → 点「恢复」→ 原会话回到侧边栏
+5. 若报错：把错误信息贴回给 agent，用 `cordis` 插件的诊断修复
 
 ---
 
